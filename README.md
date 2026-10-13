@@ -32,6 +32,23 @@ Windows 11, Intel UHD Graphics (Tiger Lake, no FP64) through Level Zero, FlexiBL
 
 Loading a hook by file name needs a FlexiBLAS fix for a use-after-unload in `__flexiblas_hook_add_from_file` (mpimd-csc/flexiblas#108, merged after 3.5.0). Also note that `FLEXIBLAS_HOOK` is split at `:`, so on Windows give a file name without a drive letter (found through `PATH` or the current directory).
 
+## Performance
+
+`bench/run_bench.sh` times square `sgemm` (`alpha=1, beta=0`) through FlexiBLAS, median of 5 calls after a first call. Measured 2026-10-13 on an i7-11850H laptop on mains power, Intel UHD Graphics (Tiger Lake, Xe-LP, 32 EU), OpenBLAS 0.3.31 (MSYS2, OpenMP) as the FlexiBLAS backend:
+
+| n | OpenBLAS, CPU | hook, iGPU, untuned | hook, iGPU, `INTEL_GPU` tuning |
+|---|---|---|---|
+| 512 | 288 GFLOP/s | 33 | 9 |
+| 1024 | 322 | 41 | 10 |
+| 2048 | 317 | 40 | 10 |
+| 4096 | 404 | 39 | 11 |
+
+On this integrated GPU, offloading is about 10x slower than OpenBLAS at every size, so it does not pay off; the `INTEL_GPU` tuning of the generic backend is slower still here (it targets larger Intel GPUs). The first offloaded call also costs about 0.3 s for kernel JIT compilation. Copies are not the bottleneck (the GPU rate is flat with size); the generic kernels are. Discrete GPUs have not been measured yet. Until then, keep `SYCL_ENGINE_GEMM_MIN_FLOPS` high on integrated GPUs, or do not load the hook there.
+
+Raw output: `bench/results-uhd-sgemm-untuned.txt`, `bench/results-uhd-sgemm-tuned.txt`.
+
+Note: on Windows/MinGW, use OpenBLAS itself as the FlexiBLAS backend (`FLEXIBLAS=<path>\libopenblas.dll`). FlexiBLAS's wrapper backend `libflexiblas_openblasopenmp.dll` exports no BLAS symbols of its own and `GetProcAddress` does not search its dependencies, so every routine silently falls back to the reference NETLIB code (about 4 GFLOP/s at n=1024).
+
 ## License
 
 Apache-2.0
