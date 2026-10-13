@@ -10,55 +10,27 @@
  * Environment:
  *   SYCL_ENGINE_LIBRARY  engine library to load (default: sycl_engine.dll / libsycl_engine.so)
  */
-#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+/* Installed FlexiBLAS headers: hook registration/options and the chain functions. */
+#include "flexiblas_backend.h"
+#include "flexiblas_real_calls.h"
+
 #ifdef _WIN32
 #include <windows.h>
-#define HOOK_EXPORT __declspec(dllexport)
 #define ENGINE_DEFAULT "sycl_engine.dll"
 #else
 #include <dlfcn.h>
-#define HOOK_EXPORT __attribute__((visibility("default")))
 #define ENGINE_DEFAULT "libsycl_engine.so"
 #endif
 
-#ifdef FLEXIBLAS_INTEGER8
-typedef int64_t blasint;
-#else
-typedef int blasint;
-#endif
-typedef size_t fcharlen; /* gfortran >= 8, clang/flang, Intel */
+FLEXIBLAS_HOOK_OPTIONS(FLEXIBLAS_HOOK_OPTIONS_END)
 
-/* --- FlexiBLAS hook registration (layout matches flexiblas_backend.h) --- */
-typedef struct {
-    char *name;
-    char *cfg_name;
-    char *desc;
-    char *authors;
-} flexiblas_hook_register_t;
-
-typedef struct {
-    char *name;
-    char *desc;
-    int type;
-    char *def;
-} flexiblas_option_t;
-
-HOOK_EXPORT flexiblas_hook_register_t flexiblas_register = {
-    "SYCL", "SYCL", "Offload large Level-3 BLAS calls to a SYCL device (oneMath generic backend)",
-    "Foad S. Farimani"};
-HOOK_EXPORT flexiblas_option_t flexiblas_options[] = {{NULL, NULL, 0, NULL}};
-
-/* --- FlexiBLAS chain functions, provided by libflexiblas --- */
-extern void flexiblas_chain_sgemm(void *transa, void *transb, void *m, void *n, void *k,
-                                  void *alpha, void *a, void *lda, void *b, void *ldb, void *beta,
-                                  void *c, void *ldc, fcharlen transa_len, fcharlen transb_len);
-extern void flexiblas_chain_dgemm(void *transa, void *transb, void *m, void *n, void *k,
-                                  void *alpha, void *a, void *lda, void *b, void *ldb, void *beta,
-                                  void *c, void *ldc, fcharlen transa_len, fcharlen transb_len);
+FLEXIBLAS_HOOK_REGISTER("SYCL", "SYCL", sycl,
+                        "Offload large Level-3 BLAS calls to a SYCL device (oneMath generic backend)",
+                        "Foad S. Farimani")
 
 /* --- Engine, resolved at init --- */
 typedef int (*engine_init_t)(void);
@@ -133,22 +105,21 @@ static void ensure_engine(void) { pthread_once(&engine_once, load_engine); }
 
 /* SYCL_HOOK_EAGER_INIT=1 loads the engine during FlexiBLAS initialisation instead, to test
  * whether the SYCL runtime tolerates being started there. */
-HOOK_EXPORT void __flexiblas_hook_initialize(void) {
+FLEXIBLAS_HOOK_INIT_FUNCTION(void) {
     const char *eager = getenv("SYCL_HOOK_EAGER_INIT");
     if (eager && *eager == '1') ensure_engine();
 }
 
-HOOK_EXPORT void __flexiblas_hook_finalize(void) {
+FLEXIBLAS_HOOK_EXIT_FUNCTION(void) {
     if (engine_finalize) engine_finalize();
     engine_finalize = NULL;
     engine_sgemm = NULL;
     engine_dgemm = NULL;
 }
 
-HOOK_EXPORT void hook_sgemm(char *transa, char *transb, blasint *m, blasint *n, blasint *k,
-                            float *alpha, float *a, blasint *lda, float *b, blasint *ldb,
-                            float *beta, float *c, blasint *ldc, fcharlen transa_len,
-                            fcharlen transb_len) {
+void hook_sgemm(char *transa, char *transb, blasint *m, blasint *n, blasint *k, float *alpha,
+                float *a, blasint *lda, float *b, blasint *ldb, float *beta, float *c, blasint *ldc,
+                flexiblas_fortran_charlen_t transa_len, flexiblas_fortran_charlen_t transb_len) {
     ensure_engine();
     if (engine_sgemm && engine_sgemm(*transa, *transb, *m, *n, *k, *alpha, a, *lda, b, *ldb, *beta,
                                      c, *ldc) == 0)
@@ -157,10 +128,10 @@ HOOK_EXPORT void hook_sgemm(char *transa, char *transb, blasint *m, blasint *n, 
                           transb_len);
 }
 
-HOOK_EXPORT void hook_dgemm(char *transa, char *transb, blasint *m, blasint *n, blasint *k,
-                            double *alpha, double *a, blasint *lda, double *b, blasint *ldb,
-                            double *beta, double *c, blasint *ldc, fcharlen transa_len,
-                            fcharlen transb_len) {
+void hook_dgemm(char *transa, char *transb, blasint *m, blasint *n, blasint *k, double *alpha,
+                double *a, blasint *lda, double *b, blasint *ldb, double *beta, double *c,
+                blasint *ldc, flexiblas_fortran_charlen_t transa_len,
+                flexiblas_fortran_charlen_t transb_len) {
     ensure_engine();
     if (engine_dgemm && engine_dgemm(*transa, *transb, *m, *n, *k, *alpha, a, *lda, b, *ldb, *beta,
                                      c, *ldc) == 0)

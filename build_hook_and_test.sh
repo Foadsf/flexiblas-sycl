@@ -11,8 +11,10 @@ DPCPP=${DPCPP_ROOT:-$HOOK/../toolchains/dpcpp}
 ONEMATH_BUILD=${ONEMATH_BUILD:-$HOOK/../spike/build-win}
 mkdir -p "$OUT"
 
-gcc -O2 -shared -o "$OUT/flexiblas_hook_sycl.dll" "$HOOK/flexiblas/hook_sycl.c" \
-    -L"$FB/bin" -lflexiblas || exit 1
+# Like FlexiBLAS's own hooks, export every global (the registration macros define plain globals).
+gcc -O2 -Wall -shared -o "$OUT/flexiblas_hook_sycl.dll" "$HOOK/flexiblas/hook_sycl.c" \
+    -I"$FB/include/flexiblas" -Wl,--export-all-symbols \
+    -L"$FB/bin" -lflexiblas -lflexiblas_mgmt || exit 1
 gcc -O2 -o "$OUT/gemm_check.exe" "$HOOK/test/gemm_check.c" -L"$FB/bin" -lflexiblas || exit 1
 echo "HOOK_BUILD_OK"
 

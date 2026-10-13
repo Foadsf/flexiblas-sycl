@@ -9,7 +9,7 @@ Status: early prototype. Only `?gemm` is offloaded so far.
 Two libraries, so that each can be built with the right compiler:
 
 - `sycl_engine` (C++/SYCL, built with a SYCL compiler such as open DPC++): copies the host matrices to device memory, calls oneMath's generic `gemm`, copies `C` back and waits. It declines a call (returns non-zero, outputs untouched) when the problem is below the threshold, the device lacks FP64 for `dgemm`, or anything fails.
-- `flexiblas_hook_sycl` (plain C, built with the same compiler as FlexiBLAS): exports `hook_sgemm`/`hook_dgemm`, loads the engine on the first call rather than during FlexiBLAS initialisation, and passes declined calls down the FlexiBLAS hook chain. `SYCL_HOOK_EAGER_INIT=1` starts the engine during initialisation instead; on the tested setup both work.
+- `flexiblas_hook_sycl` (plain C, built with the same compiler as FlexiBLAS against its installed headers `flexiblas_backend.h` and `flexiblas_real_calls.h`): exports `hook_sgemm`/`hook_dgemm`, loads the engine on the first call rather than during FlexiBLAS initialisation, and passes declined calls down the FlexiBLAS hook chain. `SYCL_HOOK_EAGER_INIT=1` starts the engine during initialisation instead; on the tested setup both work.
 
 ## Settings
 
@@ -30,7 +30,7 @@ Two libraries, so that each can be built with the right compiler:
 
 Windows 11, Intel UHD Graphics (Tiger Lake, no FP64) through Level Zero, FlexiBLAS 3.5.0 (MinGW, NETLIB backend). `test/gemm_check.c` calls `sgemm_`/`dgemm_` through the Fortran ABI and compares with a reference GEMM: all transpose combinations, padded leading dimensions, `beta = 0` with NaN in `C`. All 17 cases pass with and without the hook; with the hook, the large `sgemm` cases run on the GPU, `dgemm` falls back to the host (no FP64), and small calls stay on the host. The same holds with `SYCL_HOOK_EAGER_INIT=1`.
 
-Loading a hook by file name needs a FlexiBLAS fix for a use-after-unload in `__flexiblas_hook_add_from_file` (mpimd-csc/flexiblas#108). Also note that `FLEXIBLAS_HOOK` is split at `:`, so on Windows give a file name without a drive letter (found through `PATH` or the current directory).
+Loading a hook by file name needs a FlexiBLAS fix for a use-after-unload in `__flexiblas_hook_add_from_file` (mpimd-csc/flexiblas#108, merged after 3.5.0). Also note that `FLEXIBLAS_HOOK` is split at `:`, so on Windows give a file name without a drive letter (found through `PATH` or the current directory).
 
 ## License
 
